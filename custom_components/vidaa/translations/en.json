@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to your VIDAA TV",
+        "description": "Enter the TV's IP address. The TV must be powered on.",
+        "data": {
+          "host": "IP address",
+          "name": "Name",
+          "mac": "MAC address (for Wake-on-LAN)",
+          "port": "Port"
+        }
+      },
+      "pair": {
+        "title": "Pair with the TV",
+        "description": "Enter the PIN code shown on the TV screen.",
+        "data": {
+          "pin": "PIN"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the TV. Check the IP address and that the TV is on.",
+      "invalid_auth": "The TV rejected the PIN. Please try again."
+    },
+    "abort": {
+      "already_configured": "This TV is already configured."
+    }
+  }
+}

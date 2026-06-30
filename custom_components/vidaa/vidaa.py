@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import socket
+import ssl
 from collections.abc import Callable
 from typing import Any
 
@@ -75,26 +76,33 @@ class VidaaTV:
         self.available = False
         self.state: dict[str, Any] = {}
 
+        self._certfile = certfile
+        self._keyfile = keyfile
+        self._tls_ready = False
         self._listeners: list[Callable[[], None]] = []
         self._message_hooks: list[Callable[[str, Any], None]] = []
 
         self._client = _build_client(client_id)
         self._client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-        # Mutual TLS with the bundled client identity. The TV uses a private CA
-        # and a hostname that never matches, so peer verification is disabled -
-        # the connection is still encrypted and the TV still authenticates us.
-        import ssl
+        self._client.on_connect = self._on_connect
+        self._client.on_disconnect = self._on_disconnect
+        self._client.on_message = self._on_message
 
+    def _setup_tls(self) -> None:
+        """Load the client certificate (blocking - run in an executor).
+
+        The TV uses a private CA and a hostname that never matches, so peer
+        verification is disabled. The connection is still encrypted and the TV
+        still authenticates us via the client certificate.
+        """
         self._client.tls_set(
-            certfile=certfile,
-            keyfile=keyfile,
+            certfile=self._certfile,
+            keyfile=self._keyfile,
             cert_reqs=ssl.CERT_NONE,
             tls_version=ssl.PROTOCOL_TLSv1_2,
         )
         self._client.tls_insecure_set(True)
-        self._client.on_connect = self._on_connect
-        self._client.on_disconnect = self._on_disconnect
-        self._client.on_message = self._on_message
+        self._tls_ready = True
 
     # -- topic helpers -------------------------------------------------
 
@@ -111,6 +119,8 @@ class VidaaTV:
 
     async def async_connect(self) -> None:
         """Connect and start the network loop."""
+        if not self._tls_ready:
+            await self.hass.async_add_executor_job(self._setup_tls)
         try:
             await self.hass.async_add_executor_job(
                 self._client.connect, self.host, self.port, KEEPALIVE

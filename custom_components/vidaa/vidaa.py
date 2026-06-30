@@ -89,18 +89,23 @@ class VidaaTV:
         self._client.on_message = self._on_message
 
     def _setup_tls(self) -> None:
-        """Load the client certificate (blocking - run in an executor).
+        """Build the TLS context (blocking - run in an executor).
 
-        The TV uses a private CA and a hostname that never matches, so peer
-        verification is disabled. The connection is still encrypted and the TV
-        still authenticates us via the client certificate.
+        The TV presents a legacy certificate and cipher suite that modern
+        OpenSSL rejects at its default security level, so the level is lowered
+        and peer verification is disabled. The connection stays encrypted and
+        the TV still authenticates us via the bundled client certificate.
         """
-        self._client.tls_set(
-            certfile=self._certfile,
-            keyfile=self._keyfile,
-            cert_reqs=ssl.CERT_NONE,
-            tls_version=ssl.PROTOCOL_TLSv1_2,
-        )
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(certfile=self._certfile, keyfile=self._keyfile)
+        try:
+            context.set_ciphers("DEFAULT:@SECLEVEL=0")
+        except ssl.SSLError:  # pragma: no cover - depends on OpenSSL build
+            _LOGGER.debug("Unable to lower cipher security level")
+        self._client.tls_set_context(context)
         self._client.tls_insecure_set(True)
         self._tls_ready = True
 
@@ -126,6 +131,12 @@ class VidaaTV:
                 self._client.connect, self.host, self.port, KEEPALIVE
             )
         except (OSError, socket.error) as err:
+            _LOGGER.error(
+                "Failed to connect to VIDAA TV at %s:%s: %s",
+                self.host,
+                self.port,
+                err,
+            )
             raise CannotConnect(str(err)) from err
         self._client.loop_start()
 
